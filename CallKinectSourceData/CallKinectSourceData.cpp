@@ -9,6 +9,10 @@
 #include <Mmsystem.h>
 #pragma comment( lib,"winmm.lib" )
 
+#define DepthData 0
+#define ColorData 1
+#define BodyData 0
+
 using namespace std;
 
 int main()
@@ -27,6 +31,50 @@ int main()
 		return -1;
 	}
 
+#if DepthData
+	// Source Depth
+	IDepthFrameSource* pDepthSource;
+	hResult = pSensor->get_DepthFrameSource(&pDepthSource);
+	if (FAILED(hResult)) {
+		std::cerr << "Error : IKinectSensor::get_DepthFrameSource()" << std::endl;
+		return -1;
+	}
+
+	// Reader Depth
+	IDepthFrameReader* pDepthReader;
+	hResult = pDepthSource->OpenReader(&pDepthReader);
+	if (FAILED(hResult)) {
+		std::cerr << "Error : IDepthFrameSource::OpenReader()" << std::endl;
+		return -1;
+	}
+
+	// Get depth image
+	int width = 512;
+	int height = 424;
+	unsigned int bufferSize = width * height * sizeof(unsigned short);
+	cv::Mat bufferMat(height, width, CV_16SC1);
+	cv::Mat depthMat(height, width, CV_8UC1);
+	cv::namedWindow("Depth");
+	while (1) {
+		// Frame
+		IDepthFrame* pDepthFrame = nullptr;
+		hResult = pDepthReader->AcquireLatestFrame(&pDepthFrame);
+		if (SUCCEEDED(hResult)) {
+			hResult = pDepthFrame->AccessUnderlyingBuffer(&bufferSize, reinterpret_cast<UINT16**>(&bufferMat.data));
+			if (SUCCEEDED(hResult)) {
+				bufferMat.convertTo(depthMat, CV_8U, -255.0f / 4500.0f, 255.0f);
+			}
+		}
+		SafeRelease(pDepthFrame);
+		// Show Window
+		cv::imshow("Depth", depthMat);
+		if (cv::waitKey(10) == VK_ESCAPE) {
+			break;
+		}
+	}
+#endif
+
+#if ColorData
 	// Source Color
 	IColorFrameSource* pColorSource;
 	hResult = pSensor->get_ColorFrameSource(&pColorSource);
@@ -34,6 +82,51 @@ int main()
 		cerr << "Error: IKinectSensor::get_ColorFrameSource()" << endl;
 		return -1;
 	}
+
+	// Reader Color
+	IColorFrameReader* pColorReader;
+	hResult = pColorSource->OpenReader(&pColorReader);
+	if (FAILED(hResult)) {
+		cerr << "Error: IColorFrameSource::OpenReader()" << endl;
+		return -1;
+	}
+
+	// Get color image
+	int width = 1920;
+	int height = 1080;
+	unsigned int bufferSize = width * height * 4 * sizeof(unsigned char);
+	cv::Mat bufferMat(height, width, CV_8UC4);
+	cv::Mat colorMat(height / 2, width / 2, CV_8UC4);
+	cv::namedWindow("Color");
+
+	while (1) {
+		// Color Frame
+		IColorFrame* pColorFrame = nullptr;
+		hResult = pColorReader->AcquireLatestFrame(&pColorFrame);
+		if (SUCCEEDED(hResult)) {
+			hResult = pColorFrame->CopyConvertedFrameDataToArray(bufferSize, reinterpret_cast<BYTE*>(bufferMat.data), ColorImageFormat_Bgra);
+			if (SUCCEEDED(hResult)) {
+				cv::resize(bufferMat, colorMat, cv::Size(), 0.5, 0.5);
+			}
+		}
+		SafeRelease(pColorFrame);
+		// Show the result
+		cv::imshow("Color", colorMat);
+		if (cv::waitKey(10) == VK_ESCAPE) {
+			break;
+		}
+	}
+#endif
+
+#if BodyData
+	// Source Color
+	IColorFrameSource* pColorSource;
+	hResult = pSensor->get_ColorFrameSource(&pColorSource);
+	if (FAILED(hResult)) {
+		cerr << "Error: IKinectSensor::get_ColorFrameSource()" << endl;
+		return -1;
+	}
+
 	// Source Body
 	IBodyFrameSource* pBodySource;
 	hResult = pSensor->get_BodyFrameSource(&pBodySource);
@@ -49,6 +142,7 @@ int main()
 		cerr << "Error: IColorFrameSource::OpenReader()" << endl;
 		return -1;
 	}
+
 	// Reader Body
 	IBodyFrameReader* pBodyReader;
 	hResult = pBodySource->OpenReader(&pBodyReader);
@@ -171,5 +265,6 @@ int main()
 			break;
 		}
 	}
+#endif
 	return 0;
 }
